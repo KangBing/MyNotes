@@ -42,20 +42,48 @@ C++11已经支持多线程了。之前版本需要platform-specific来支持多�
 1998年制订的C++标准不支持多线程，也没有定义memory model。需要特定的编译器扩展才能编写多线程应用。
 编译器除了添加拓展，可以添加C APIs支持多线程，例如POSIX C、Microsoft Windows API。这些特定的C APIs也是根据不同平台实现的。
 一些应用框架MFC、Boost、ACE提供更高层次的多线程库，不过也是通过封装各种不同平台的库实现的。
-
 上面这些实现，缺乏标准的支持，没有统一的memory model，容易引起问题；例如不同代码在不同平台编译器实现不同。
 
-vendorsvendors#### 1.3.2 
-一些高性能计算的开发者担心C++类知识封装了low-level facilities。如果最关心性能，对比high-level和low-level抽象之间的差异，就是抽象代价（abstraction penalty)。
+#### 1.3.2 新标准支持并发
+C++11不仅有了线程感知memory model，还提供管理线程的类，保护共享数据，线程间的同步机制，low-level的原子操作。
 
+#### 1.3.3 C++线程库的效率
+一些高性能计算的开发者担心C++类只是封装了low-level facilities。果最关心性能，对比high-level和low-level抽象之间的差异，就是抽象代价（abstraction penalty)。
 C++标准委员会考虑到了这点，C++标准库和C++线程库的设计目标时没有抽象代价或抽象代价很小。
+C++标准委员会还提供了low-level的工具，方便直接操作硬件，达到终极性能。为了实现这一点，提出了新的memory model和atomic operatiron库，来控制独立的bits、bytes和显存内部同步，任何改变均可见。
+C++标准库提供high-level的抽象，使得编写多线程更容易。有时候使用这些抽象，会有额外代码执行，影响性能。这些性能损耗不一定是更高层次的抽象代价。总体来说，编译器会做优化，抽象代价不比人工写函数高。
+在一些场景中，不需要high-level工具提供的功能；大部分时候这不是问题，但在一些特殊场景中，这些不用的功能影响性能，这是就需要手工设计low-level工具了。
 
+#### 1.3.4 平台化的工具
+对于给定的平台，C++标准库提供了`native_handle()`成员函数，只是使用平台相关的底层实现。
 
+### 1.4 开始
+写一个多线程的例子。
 
+#### 1.4.1 你好，并发的世界
+以打印“Hello Wrold”为例；单线程实现
+```
+#include <iostream>
+int main()
+{
+	std::cout<<"Hello World\n";
+}
+```
+多线程实现
+```
+#include <iostream>
+#include <thread>
+void hello()
+{
+	std::cout<<"Hello Concurrent World\n";
+}
+int main()
+{
+	std::thread t(hello);
+    t.join();
+}
+```
+多线程版本中，创建新的线程，新的线程负责写内容到输出流，主线程等待新线程结束。
 
-
-
-
-
-
-
+### 1.5 总结
+这一章，作者讲解了什么是并发和多线程，以及什么情况下使用多线程。使用简单例子展示多线程程序。
