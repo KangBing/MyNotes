@@ -28,7 +28,6 @@ backgroupd_task f;
 std:thread my_thread(f);
 ```
 上面代码中，函数对象拷贝到新的线程存储空间，要确保拷贝对象和原对象相同。
-
 传入函数对象时，要避免语法歧义，例如
 ```
 std::thread my_thread(backgroud_task());
@@ -46,7 +45,6 @@ std::thread my_thread([]{
     do_something_else();
 });
 ```
-
 创建线程后，要显式决定是否等待它结束（通过join），或让它自己运行（通过detach）。`std::thread`析构时会调用`std::terminate`，终止线程；因此即使可能存在异常，也要确保线程join或detach。要确保在线程对象`std::thread`析构前join或detach；如果线程已经终止，如果再detach，那么线程可能在`std::thread`析构后继续运行。
 
 如果detach线程，要确保线程使用的数据一直有效。例如线程可能会使用局部对象或者指针，要防止这些数据失效。防止这个问题的一个办法是拷贝数据到线程内；还有一个方法是等待线程运行结束，再销毁线程使用的共享数据。
