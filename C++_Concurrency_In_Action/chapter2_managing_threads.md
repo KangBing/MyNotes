@@ -110,3 +110,72 @@ void f()
 ```
 
 当调用到函数`f`末尾时，会析构局部对象，析构时会调用`join()`。
+
+#### 2.1.4 在后台运行线程
+调用`detach()`可以使得`std::thread`对象在后台运行，不能再用直接方式跟它通信，不能再通过`std::thread`对象引用它；线程的所有权和控制权交给了C++ Runtime Library，有运行库来确保线程退出时回收资源。
+UNIX的的后台进程常常叫做守护进程，分离的线程叫做守护线程。守护线程一般是长时间运行（几乎和应用生命周期相同），执行后台任务：检测文件系统、清理不用资源、优化数据结构等。可以用后台线程监控其他线程是否完成，线程在哪里执行"fire and forget"任务。
+`std::thread`对象调用`detach()`后，就不再和线程有关联了，也不能再调用`joinable`了。
+```
+std:thread t(do_background_work);
+t.detach();
+assert(!t.joinable());
+```
+
+### 2.2 向线程函数传递参数
+向线程运行的可调用对象或者函数传递参数，就像给`std::thread`构造函数传递参数一样。记住：默认这些参数*拷贝*到线程空间，即使参数是引用。下面是一个例子：
+```
+void f(int i, std::string const& s);
+std::thread t(f, 3, "hello");
+```
+传入的类型时`char const*`，在新线程的上下文中转换为`std::string`。当传入的指针指向动态变量时，需要注意：
+```
+void f(int i, std::string const& s);
+void oops(int some_param)
+{
+	char buffer[1024];
+    sprintf(buffer, "%i", some_param);
+    std::thread t(f, 3, buffer);
+    t.detach();
+}
+```
+传入参数指向函数`oops`内部变量，当`oops`早于线程执行完时，内部变量`buffer`释放，将会造成未定义行为。解决方法为显式转换为`std::string`
+```
+void f(int i, std::string const& s);
+void oops(int some_param)
+{
+	char buffer[1024];
+    sprintf(buffer, "%i", some_param);
+    std::thread t(f, 3, std::string(buffer));
+    t.detach();
+}
+```
+
+还有一种相反的场景：对象拷贝到线程了，但是你却想要拷贝引用。例如要在新的线程更新数据，之后使用
+```
+void update_data_for_widget(widget_id w, widget_data& data);
+
+void oops_again(widget_id w)
+{
+	widget_data data;
+    std::thread t(update_data_for_widget, w, data);
+    display_status();
+    t.join();
+    process_widget_data(data);
+}
+```
+x希望`update_data_for_widget`第二个参数是引用，但实际是拷贝。如果确实要传入引用，使用`std::ref`
+```
+std::thread t(update_data_for_widget, w, std::ref(data));
+```
+
+`std::bind`和`std::thread`参数传递机制一样。传递类的成员函数，第一个参数为`this`指针
+```
+class X
+{
+public:
+	void do_lengthy_work();
+};
+X my_x;
+std::thread t(&X::do_lengthy_work, &my_x);
+```
+
