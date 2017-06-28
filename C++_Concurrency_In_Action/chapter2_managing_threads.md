@@ -176,4 +176,97 @@ public:
 X my_x;
 std::thread t(&X::do_lengthy_work, &my_x);
 ```
+ 还有一种场景，参数不能`copy`，只能`move`，例如`unique_ptr`  。
+ ```
+ void process _big_object(std::unique_ptr<big_object>);
+ std::unique_ptr<big_object> p(new big_object);
+ p->prepare_data(42);
+ std::thread t(process_big_object, std::move(p));
+ ```
+### 2.3 转移线程所有权
+创建一个线程，需要在另外一个线程等待这个线程运行结束；这是就需要把这个线程对象传入到另外那个线程。
+`std::thread`时resource-owning类型，和`std::ifstream`、`std::unique_ptr`，是*moveable*不是*copyable*。
+```
+void some_function();
+void some_other_function();
+std::thread t1(some_function);
+std::thread t2 = std::move(t1); // 调用右值赋值构造函数
+t1 = std::thread(some_other_function); // 临时对象赋值给t1,不用显式调用std::move
+std::thread t3;
+t3 = std::move(t2); // 调用右值赋值操作符
+t1 = std::move(t1);
+```
+
+move支持把`std::thread`对象传出函数作用域
+```
+std::thread f()
+{
+	void some_function();
+    return std::thread(some_function);
+}
+std::thread g()
+{
+	void some_other_function(int);
+    std::thread t(some_other_function, 42);
+    return t;
+}
+```
+
+把`std::thread`传入函数时，可以构造临时对象传入
+```
+void f(std::thread t);
+void g()
+{
+	void some_function();
+    f(std::thread(some_function));
+    std::thread t(some_function);
+    f(std::move(t));
+    
+}
+```
+
+可以通过move以及RAII构造scoped_thread，确保线程j对象析构前join
+```
+class scoped_thread
+{
+	std::thread t;
+public: 
+	explicit scoped_thread(std::thread t_):
+    	t(std::move(t_))
+    {
+    	if(!t.joinable())
+        	throw std::logic_error("No thread");
+    }
+    ~scoped_thread()
+    {
+    	t.join();
+    }
+	scoped_thread(scoped_thread const&)=delete;
+    scoped_thread& operator=(scoped_thread const&)=delete;
+};
+```
+
+move还支持容器，可以把线程放到容器
+```
+void do_word(unsigned id);
+void f()
+{
+	std::vector<std::thread> threads;
+    for(unsigned i = 0; i < 20; ++i)
+    {
+    	threads.push_back(std::thread(do_work, i));
+    }
+    std::for_each(threadsbegin(), threads.end(),
+    	std::mem_fn(&std::thread::join));
+}
+```
+
+### 2.4 选择合适数量的线程
+
+
+
+
+
+
+
 
