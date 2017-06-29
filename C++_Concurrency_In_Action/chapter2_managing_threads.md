@@ -262,11 +262,72 @@ void f()
 ```
 
 ### 2.4 选择合适数量的线程
+`std::thread::hardware_concurrency()`返回C++ Standard Library可以同时并发运行的线程数，显然多核机器为核数。这只是一个提示，如果不能得到正确信息将会返回0。
+下面是并发版本的`std::accumulate`
+```
+template<typename Iterator, typename T>
+struct accumulate_block
+{
+	void opeartor() (Iterator first, Iterator last, T& result)
+    {
+    	result = std::accumulate(first, last, result);
+    }
+};
+template<typename Iterator, typename T>
+T parallel_accumulate(Iterator first, Iterator last, T init)
+{
+	unsigned long const length = std::distance(first, last);
+    if(!length)
+    	return init;
+        
+    unsigned long const min_per_thread = 25;
+    unsigned long const max_thread = (length + min_per_thread - 1) / min_per_thread;
+    
+    unsigned long const hardware_threads = std::thread::hardware_concurrency();
+    
+    unsigned long const num_threads = std::min(hardware_threads != 0? hardware_threads: 2, max_threads);
+    
+    unsigned long const block_size = length / num_threads;
+    
+    std::vector<T> result(num_threads);
+    std::vector<std::thread> threads(num_threads-1);
+    
+    Iterator block_start = first;
+    for(unsigned long i = 0; i < (num_threas - 1); ++i)
+    {
+    	Iterator block_end = block_start;
+        std::advance(block_end, block_size);
+        threads[i] = std::(accumulate_block<Iterator, T)(), block_start, block_end, std::ref(results[i]));
+        block_start = block_end;
+    }
+    accumulate_block<Iterator, T>()(block_start, last, results[num_threads - 1]);
+    std::for_each(threads.begin(), threads.end(), std::mem_fn(&std::thread::join));
+    result std::accumulate(results.begin(), results.end(), init);
+}
+```
+上面带来流程比较简单，就是把一个范围(first, last)内数据，根据线程数划分，不同线程accumulate不同区间，最终再合并这些区间accumulate的结果。当然要注意一些边界和特殊情况的处理。
 
+### 2.5 识别线程
+两种方式可以获取线程id；一种是通过线程`std::thread`对象调用`get_id()`，另一种是在这个线程运行代码中调用`std::this_thread::get_id()`。前一种，如果`std::thread`对象已经没有关联线程了，那么也会返回一个id，这样的id意味着"not any thread"。
+`std::thread::id`对象可以拷贝、比较。两个id相同，要么是就是同一个线程（包括都是not any thread)；不同则不是同一个线程（或者其中一个是not any thread)。`std::thread::id`实现了很多比较操作，可以作为关联容器的key，可以排序;如果a < b, b < c，那么a < c。标准库也提供了`std::hash<std::thread::id>`，所以也可以放到无序容器中。
+可以根据id让不同线程，执行不同任务
+```
+std::thread::id master_thread;
+void some_core_part_of_algorithm()
+{
+	if(std::this_thread::get_id() == master_thread)
+    {
+    	do_msater_thread_work();
+    }
+    else
+    {
+    	do_common_work();
+    }
+}
+```
 
-
-
-
+### 2.6 总结
+这一种介绍了启动线程、等待线程结束、分离线程做后台线程；向线程传递参数；转移线程控制权；区分线程。
 
 
 
