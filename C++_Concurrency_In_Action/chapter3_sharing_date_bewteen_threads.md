@@ -84,4 +84,38 @@ void foo()
 不要把共享数据的指针或引用传递到互斥量保护的区域以外。
 
 #### 3.2.3 找出接口中的条件竞争
-
+使用互斥量或其他机制避免条件竞争，要确定保护了共享数据。
+以`std::stack`为例，除了`swap()`，还有5个接口`push(), pop(), top(), size(), empty()`。如果修改接口，返回copy，而不是返回reference，使用互斥量保护内部数据，这个接口还是存在条件竞争。不仅基于互斥量的实现有这个问题，无锁实现也存在这个问题。
+```
+template<typename T, typename Container = std::dequeue<T> >
+class stack
+{
+public:
+	explicit stack(const Container&);
+    explicit stack(Container&& == Container());
+    template <class Alloc> stack(const  Container&, const Alloc&);
+    template <class Alloc> stack(Container&&, const Alloc&);
+    template <class Alloc> stack(Container&&, const Alloc&);
+    template <class Alloc> stack(stack&&, const Alloc&);
+    
+    bool empty() const;
+    size_t size() const;
+    T& top();
+    T const& top() const;
+    void push(T const&);
+    void push(T&&);
+    void pop();
+    void swap(stack&&);
+}
+```
+接口·empty(), size()`的接口并不可靠，因为调用时得到的结果，再使用时可能stack有元素push/pop了。
+```
+stack<int> s;
+if(!s.empty())
+{
+	int const value = s.top();
+    s.pop();
+    do_something(value);
+}
+```
+上面代码单线程执行，没有问题。如果多线程，就有危险。在空的stack上调用`top()`会有未定义行为。stack内部使用互斥量并不能解决上面问题，这是接口设计的问题。
