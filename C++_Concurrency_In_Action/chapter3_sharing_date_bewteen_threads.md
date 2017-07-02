@@ -17,3 +17,71 @@
 C++标准库提供的保护共享数据最基本的机制是*mutex*。
 
 ### 3.2 使用互斥量保护共享数据
+保护共享数据，确保访问共享数据的代码互斥执行即可。使用互斥量可以实现保护共享数据。
+互斥量是C++中保护共享数据常用的机制。使用互斥量时1、确保保护的临界区合适2、防止死锁。
+
+#### 3.2.1 在C++中使用互斥量
+`std::mutex`可以创建互斥量对象，`lock()`给互斥量上锁，`unlock()`给互斥量解锁。为了防止给互斥量解锁，常常使用RAII机制，`std::lock_guard`模板来上锁解锁。下面是使用互斥量保护list的例子
+```
+#include <list>
+#include <mutex>
+#include <algorithm>
+
+std::list<ing> some_list;
+std::mutex some_mutex;
+
+void add_to_list(int new_value)
+{
+	std::lock_guard<std:mutex> guard(some_mutex);
+    some_list.push_back(new_value);
+}
+bool list_contains(int value_to_find)
+{
+	std::lock_guard<std::mutex> guard(some_mutex);
+    return std::find(some_list.begin(), some_list.end(), value_to_find) != some_list.end();
+}
+```
+
+#### 3.2.2 设计保护数据的代码
+保护共享数据并不像上面那样在函数中加上一个`std::lock_guard`那么简单；如果得到共享数据的引用或指针，上面的保护也变得没有意义。例如，函数返回了共享数据的引用或指针
+```
+class some_data
+{
+	int a;
+    std::string b;
+public:
+	void do_something();
+};
+
+class data_wrapper
+{
+private:
+	some_data data;
+    std::mutex m;
+public:
+	template<typename Function>
+    void process_data(Function func)
+    {
+    	std::lock_guard<std::mutex> l(m);
+        func(data); // 共享数据传递给用户自定义函数
+    }
+};
+
+some_data* unprotected;
+void malicious_function(some_data& protected_data)
+{
+	unprotected = &protected_data;
+}
+data_wrapper x;
+
+void foo()
+{
+	x.process_data(malicious_function);
+    unprotected->do_something(); // 没有保护使用共享数据
+}
+```
+上面例子中看似使用了互斥量保护共享数据，但是在用户自定义函数中，将共享数据以指针形式传递出来；之后再使用这个指针式时，并没有使用互斥量保护。
+不要把共享数据的指针或引用传递到互斥量保护的区域以外。
+
+#### 3.2.3 找出接口中的条件竞争
+
