@@ -134,3 +134,68 @@ some_stack.pop(result);
 许多时候可以这样做；但是它需要提前构造堆栈存储元素的实例。对于一些特别花时间/资源的类型，这样实践不可行；在构造时也未必有构造函数需要的参数。当然，存储要素类型要支持赋值操作符。
 
 * Option 2: 要求无异常的拷贝构造函数或移动构造函数。
+如果`pop()`返回值，只是存在一个异常安全的问题。许多类型的拷贝构造函数不抛出异常，一些传递右值的移动赋值构造函数也不抛出异常。一种做法是严格限制线程安全栈的使用，使得值可以安全返回没有异常。
+这样虽然安全，但不切实际。编译时使用`std::is_nothrow_copy_constructible`或`std::is_nothrow_move_constructible`来检测拷贝/移动构造函数不抛出异常，但是限制太多。用户自己定义的类型，拷贝构造函数会抛出异常，或者没有移动构造函数。这样的类型，不能存储到线程安全栈。
+
+* Option 3: 返回指向栈顶元素的指针
+返回指向栈顶元素的指针可以避免异常安全的问题。但是有两个缺点1、需要管理内存，这一点可以使用智能指针`std::shared_ptr`解决，2、对于简单类型，例如`int`有额外开销。这样栈中对象都需要new出来，相对非线程安全版本，开销比较大。
+
+* Option 4: Option 1+2或Option 1+3
+通用性代码中，接口灵活性不能忽视。如果选择了Option2或Option 3，那么实现Option 1也不难。
+
+线程安全栈的例子，实现了Option 1和Option 3，`pop()`有两个版本
+```
+#include <exception>
+#include <memory>
+
+struct empty_stack: std::exception
+{
+	const char* what() const throw();
+};
+
+template<typename T>
+class threadsafe_stack
+{
+private:
+	std::stack<T> data;
+    mutable std::mutex m;
+public:
+	threadsafe_stack() {}
+    threadsafe_stack(const threadsafe_stack& other)
+    {
+    	std::lock_guard<std::mutex> lock(other.m);
+        date = other.data;
+    }
+    threadsafe_stack& operator=(const threadsafe_stack&) = delete;
+    
+    void push(T new_value)
+    {
+    	std::lock_guard<std::mutex> lock(m);
+        data.push(new_value);
+    }
+    std::shared_ptr<T> pop()
+    {
+    	std::lock_guard<std::mutex> lock(m);
+        if(data.empty()) throw empty_stack();
+        std::shared_ptr<T> const res(std::make_shared<T>(data.top()));
+        data.pop();
+        return res;
+    }
+    void pop(T& value)
+    {
+    	std::lock_guard<std::mutex> lock(m);
+        if(data.empty()) throw empty_stack();
+        value = data.top();
+        data.opo();
+    }
+    bool empty() const
+    {
+    	std::lock_guard<std::mutex> lock(m);
+        return data.empty();
+    }
+};
+```
+
+锁的粒度太小，不能完全覆盖需要保护的部分；锁的粒度太大，容易导致性能下降。如果使用多个锁，那么可能会有死锁的问题。
+
+#### 3.2.4 死锁：问题及方案
