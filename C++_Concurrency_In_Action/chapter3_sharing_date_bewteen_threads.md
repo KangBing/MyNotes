@@ -199,3 +199,31 @@ public:
 锁的粒度太小，不能完全覆盖需要保护的部分；锁的粒度太大，容易导致性能下降。如果使用多个锁，那么可能会有死锁的问题。
 
 #### 3.2.4 死锁：问题及方案
+如果一个操作可能需要锁住多个互斥量，就可能造成死锁。
+常见的一个解决方案是，在使用多个锁时，按照固定顺序来上锁，例如使用mutex A和mutex B时，都先给A上锁，再给B上锁。这样操作，有些不易实现，例如交换两个变量，每个变量内部都有锁。
+C++标准库中有解决办法，使用`std:;lock`，可以同时给多个互斥量上锁，不会发生死锁。
+```
+class some_big_object;
+void swap(some_big_object& lhs, some_big_object& rhs);
+
+class X
+{
+private:
+	some_big_object some_detail;
+    std::mutex m;
+public:
+	X(some_big_object const& sd):some_detail(sd){}
+    friend void swap(X& lhs, X& rhs)
+    {
+    	if(&lis == & rhs)
+        	return;
+        std::lock(lhs.m, ths.m); // 同时上锁
+        std::lock_guard<std::mutex> lock_a(lhs.m, std::adopt_lock); // adopt_lock表示已经上锁了
+        std::lock_guard<std::mutex> lock_b(rhs.m, std::adopt_lock);
+        swap(lhs.some_detail, ths.some_detail);
+    }
+};
+```
+`std::lock`可能会抛出异常，但是它会确保要么都上锁成功，要么都没有上锁。`std::lock`可以在某些场景下帮助避免死锁；解决死锁的问题，还要依赖开发者经验水平。
+
+### 避免死锁进一步指导
