@@ -226,4 +226,108 @@ public:
 ```
 `std::lock`可能会抛出异常，但是它会确保要么都上锁成功，要么都没有上锁。`std::lock`可以在某些场景下帮助避免死锁；解决死锁的问题，还要依赖开发者经验水平。
 
-### 避免死锁进一步指导
+### 3.2.5 避免死锁进一步指导
+大多情况下的死锁都发生在使用锁的时候，不使用锁时也可能发生死锁，例如两个线程互相调用对方线程对象的`join()`。
+避免死锁的一个基本原则可以归纳为：不要等待一个可能等待你的线程。
+
+* 避免嵌套锁
+当持有一个锁时，不要再去获取另外的锁。如果需要同时获取多个锁，可以使用`std::lock`来同时获取。
+
+* 持有锁时不要调用用户自定义代码
+这个原则是上条原则的补充。持有锁时，再调用自定义代码，有危险。因为不知道自定义代码是否又去获取锁。但有时候难以避免这种情况，这是有新的指导原则。
+
+* 以特定顺序获取锁
+如果需要获取多个锁，又不能使用`std::lock`，那么就以特定顺序来获取锁。实践中，可以根据锁的地址来给锁排序，以此来决定上锁顺序。
+
+* 分层次使用锁
+这是比较特殊的情况，可以在运行时检查是否可以使用锁。例如应用分为多层，在加锁时，要先给高层加锁，再给底层加锁。
+```
+hierarchical_mutex high_level_mutex(10000);
+hierarchical_mutex low_level_mutex(5000);
+
+int do_low_level_stuff();
+
+int low_level_func()
+{
+	std::lock_guard<hierarchical_mutex> lk(low_level_mutex);
+    return do_low_level_stuff();
+}
+
+void high_level_stuff(int some_param)
+
+void high_level_func()
+{
+	std:;lock_guard<hierarchical_mutex> lk(high_level_mutex);
+    high_level_stuff(low_level_func());
+}
+
+void thread_a()
+{
+	high_level_func();
+}
+
+hierarchical_mutex other_mutex(100);
+void do_other_stff();
+
+void other_stuff()
+{
+	high_level_func();
+    do_other_stuff();
+}
+
+void thread_b()
+{
+	std::lock_guard<hirarchical_mutex> lk(other_mutex);
+    other_stuff();
+}
+```
+`thread_a()`没有问题，因为它先给高层互斥量加锁，再给底层互斥量加锁。`thread_b()`有问题，加锁顺序不对。
+`hierarchical_mutex`的实现
+```
+class hierarchical_mutex
+{
+	std::mutex internal_mutex;
+    unsigned long const hierarchy_value;
+    unsigned long previous_hierarchy_value;
+    static thread_local unsigned long this_thread_hierarchy_value;
+    
+    void check_for_hierarchy_violation()
+    {
+    	if(this_thread_hierarchy_value<= hierarchy_value)
+        {
+        	throw std::logic_error("mutex hierarchy violated");
+        }
+    }
+    void update_hierarchy_value()
+    {
+    	previous_hierarchy_value = this_thread_hierarchy_value;
+        this_thread_hierar_value = hierarchy_value;
+    }
+   
+public:
+	explicit hierarchical_mutex(unsigned long value): hierarchy_value(value), previous_hierarch_value(0)
+    {}
+    void lock()
+    {
+    	check_for_hierarcy_violation();
+        internal_mutex.lock();
+        update_hierarchy_value();
+    }
+    void unlock()
+    {
+    	this_thread_hierarchy_value = previous_hierarchy_value;
+        internal_mutex.unlock();
+    }
+    bool try_lock()
+    {
+    	check_for_hierarchy_violation();
+        if(!internal_mutex.try_lock())
+        {
+        	return false;
+        }
+        update_hierarchy_value();
+        return true;
+    }
+};
+thread_local unsigned long hierarchical_mutex::this_thread_hierarchy_value(ULONG_MAX);
+```
