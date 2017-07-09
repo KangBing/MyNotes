@@ -282,7 +282,7 @@ void thread_b()
 }
 ```
 `thread_a()`没有问题，因为它先给高层互斥量加锁，再给底层互斥量加锁。`thread_b()`有问题，加锁顺序不对。
-`hierarchical_mutex`的实现
+`hierarchical_mutex`用户可以自己实现。下面是一个简单的实现，它可以使用`std::lock_guard<>`，因为它实现了`lock()`,`unlock()`,`try_lock()`。
 ```
 class hierarchical_mutex
 {
@@ -331,3 +331,75 @@ public:
 };
 thread_local unsigned long hierarchical_mutex::this_thread_hierarchy_value(ULONG_MAX);
 ```
+
+* 把这些准则扩展到锁以外
+死锁不仅仅发生在使用时的时候，任何循环等待的同步操作都可能发生死锁。可以把上面准则扩展到锁以外使用。
+
+#### 3.2.6 使用`std::unique_lock`灵活上锁
+与`std::lock_guard`相比，`std::unique_lock`更加灵活。`std::unique_lock`不一定时刻持有关联的互斥量，例如构造时传入第二个参数`std::adopt_lock`表示只是管理互斥量上的锁；传入第二个参数`std::defer_lock`表示在构造时，互斥量应该处于解锁状态。
+更多内容可以参考[这里](http://www.cplusplus.com/reference/mutex/unique_lock/)
+
+#### 3.2.7 在不同作用域转移互斥量所有权
+`std::unique_lock`实例不一定持有关联的互斥量，所以互斥量的所有权可以通过*moving*方式在不同实例间转移。在一些场景中自动转移，例如函数返回实例；在一些场景中需要显式调用`std::move()`。根本上来说，要看源实例是左值还是右值。
+`std::unique_lock`可以*movable*，但是不能*copyable*。下面是一个例子
+```
+std::unique_lock<std::mutex> get_lock()
+{
+	extern std::mutex some_mutex;
+    std::unique_lock<std::mutex> lk(some_mutex);
+    prepare_data();
+    return lk; // 直接返回，无需std::move
+}
+void process_data()
+{
+	std::unique_lock<std::mutex> lk(get_lock());
+    do_something();
+}
+```
+
+#### 3.2.8 使用合适粒度的锁
+锁的粒度是指锁包含的范围。细粒度的锁包含小范围的数据，粗粒度的锁包含大范围的数据。
+在可能的情况下，只有在access共享数据时才加锁，在锁的外面再处理数据。特别是，在持有锁时不要进行耗时操作（例如文件I/O）。
+`std::unique_lock`可以调用`unlock`解锁，之后可以再调用`lock`上锁
+```
+void get_and_process_data()
+{
+	std::unique_lock<std::mutex> my_lock(the_mutex);
+    some_class data_to_process = get_next_data_chunk();
+    my_lock.unlock();
+    result_type result = process(data_to_process);
+    my_lock.lock();
+    write_result(data_to_process, result);
+}
+```
+以合适粒度加锁，不仅仅是关于数据量，还包括持有锁的时间以及持有锁时进行的操作。通常来说，在需要锁保护的操作上，持有锁的时间应该尽量的少。
+在前面的例子中，交换两个类实例时需要比较它们是否相同。比较简单数据类型时（int)，简单数据类型拷贝代价非常小，可以先拷贝再比较。
+```
+class Y
+{
+private:
+	int some_detail;
+    mutable std::mutex m;
+    
+    int get_detail() const
+    {
+    	std::lock_guard<std::mutex> lock_a(m);
+        return some_detail;
+    }
+public:
+	Y(int sd):some_detail(sd){}
+    
+    friend bool operator==(Y const& lhs, Y const& rhs)
+    {
+    	if(&lhs == &rhs)
+        	return true;
+        int const lhs_value = lhs.get_detail();
+        int const rhs_value = rhs.get_detail();
+        return lhs_value == rhs_value;
+    }
+};
+```
+上面代码中，在比较前先获取值，比较时没有锁，因此比较的那一时刻会有条件竞争，比较的返回值并不完全“正确”。
+
+
+### 3.3 保护共享数据的其他方法
