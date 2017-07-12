@@ -44,6 +44,29 @@ A、B两地相距4500km。轿车载客2人，时速200km/h；客车载客40人�
 * 显式并行编程模型
 * 优化吞吐量，而不是延迟
 
+## CUDA编程
+CUDA支持多种语言，这里主要讲解C语言。使用CUDA编程，有些代码运行在CPU，有些代码运行在GPU。
+CPU叫做HOST，GPU叫做DEVICE。CPU来控制GPU，向GPU发送指令。CPU和GPU有各自独立的内存。
+数据可以在GPU和CPU之间传递，使用`cudaMemcpy`函数；在GPU上分配内存使用`cudaMalloc`函数；CPU可以启动核函数。
+
+## GPU程序流程
+1、CPU调用`cudaMalloc`在GPU上分配内存
+2、CPU调用`cudaMemcpy`把数据拷贝到GPU
+3、CPU启动核函数
+4、CPU调用`cudaMalloc`把结果从GPU拷贝到CPU
+
+## GPU擅长
+1、启动大量线程
+2、并行运行这些线程
+
+## 数组内数字求平方
+CPU代码
+```
+for(i = 0; i < 64; ++i){
+	out[i] = in[i] * in[i];
+}
+```
+CPU只有一个线程执行上面代码。总共循环64次。
 
 
 
