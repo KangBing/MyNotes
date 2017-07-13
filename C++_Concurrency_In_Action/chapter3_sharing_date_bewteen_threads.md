@@ -403,3 +403,99 @@ public:
 
 
 ### 3.3 保护共享数据的其他方法
+尽管互斥量是最常用的机制，但是在特殊场景中还可以使用其他方法来保护共享数据。
+例如，共享数据只有在并发情况下初始化时才需要保护（可能初始化后是只读的）。这种情景，每次access都加锁代价有点大。
+
+#### 3.3.1 初始化时保护共享数据
+数据初始化代价比较大，例如是连接数据库，分配内存等。使用*lazy initialization*，单线程做法通常是检测是否初始化，如果没有则初始化：
+```
+std:::shared_ptr<some_resource> resource_ptr;
+void foo()
+{
+	if(!resource_ptr)
+    {
+    	resource_ptr.reset(new some_resource);
+    }
+    resource_ptr->do_somethring();
+}
+```
+当使用多线程时，直接把上面代码“翻译”，每个线程在检查和初始化时，都加锁
+```
+td:::shared_ptr<some_resource> resource_ptr;
+std::mutex resource_mutex;
+void foo()
+{
+	std::unique_ptr<std::mutex> lk(resource_mutex);
+    if(!resource_ptr)
+    {
+    	resource_ptr.reset(new some_resource);
+    }
+    lk.unlock();
+    resource_ptr->do_somethring();
+}
+```
+上面代码可以优化，使用“Double-Checked Locking"
+```
+void undefined_behaviour_with_double_checked_locking()
+{
+	if(!resource_ptr) // 1
+    {
+    	std::lock_guard<std::mutex> lk(resource_mutex);
+        if(!resource_ptr) //2 
+        {
+        	resource_ptr.reset(new some_resource); //3
+        }
+    }
+    resource_ptr->do_something();//4
+}
+```
+上面代码有数据竞争。1处判断时并没有使用锁，它会和3处有数据竞争，不仅仅涉及指针，还涉及指针指向对象。因为new操作创建对象分两步，首先分配内存，之后再分配内存位置调用构造函数。可能在分配内存，且为构造对象是调用4处，会出现未定义行为。
+C++标准委员会为解决这样场景给出了新的方法，即使用`std::call_once`和`std::once_flag`。每个线程都调用`std::call_once`来初始化，在`std::call_once`返回时就能正确初始化了；这样代价比使用互斥量小。`std::call_once`可以和任何可调用对象结合使用
+```
+std::shared_ptr<some_resource> resource_ptr;
+std::once_flag resource_flag;
+
+void init_resource()
+{
+	resource_ptr.reset(new some_resource);
+}
+
+void foo()
+{
+	std::call_once(resource_flag, init_resource);
+    resource_ptr->do_something();
+}
+```
+
+·std::once_flag`还可以用作延迟初始化类成员
+```
+class X
+{
+private:
+	connection_info connection_details;
+    connection_handle connection;
+    std::once_flag connection_init_flag;
+    
+    void open_connection()
+    {
+    	connection = connection_manager.open(connection_detail);
+    }
+
+public:
+	X(connection_info const& connection_details_):
+    	connection_details(connection_details_)
+    {}
+    void send_data(data_packet const& data)
+    {
+    	std::call_once(connection_init_flag, &x::open_connection, this);
+    }
+    data_packet receive_data()
+    {
+    	std::call_once(connection_init_flag, &X::open_connection, this);
+        return connection.receive_data();
+    }
+};
+```
+上面代码中，要么`send_data()`初始化连接，要么`receive_data()·初始化连接。需要注意的是`std::once_flag`既不能copied，又不能moved。
+
+
