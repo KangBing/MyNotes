@@ -68,7 +68,103 @@ for(i = 0; i < 64; ++i){
 ```
 CPU只有一个线程执行上面代码。总共循环64次。
 
+GPU完整代码
+```language
+#include <stdio.h>
 
+__global__ void square(float* d_out, float* d_in){
+    int idx = threadIdx.x;
+    float f = d_in[idx];
+    d_out[idx] = f * f;
+}
+
+int main(int argc, char* argv[]){
+    const int ARRAY_SIZE = 64;
+    const int ARRAY_BYTES = ARRAY_SIZE * sizeof(float);
+
+    float h_in[ARRAY_SIZE];
+    float h_out[ARRAY_SIZE];
+    for(int i = 0; i < ARRAY_SIZE; ++i){
+        h_in[i] = float(i);
+    }
+
+    float* d_in;
+    float* d_out;
+
+    cudaMalloc((void**)&d_in, ARRAY_BYTES);
+    cudaMalloc((void**)&d_out, ARRAY_BYTES);
+
+    cudaMemcpy(d_in, h_in, ARRAY_BYTES, cudaMemcpyHostToDevice);
+
+    square<<<1, ARRAY_SIZE>>>(d_out, d_in);
+
+    cudaMemcpy(h_out, d_out, ARRAY_BYTES, cudaMemcpyDeviceToHost);
+
+    for(int i = 0; i < ARRAY_SIZE; ++i){
+        printf("%f", h_out[i]);
+        printf(  ((i % 4 ) != 3)? "\t": "\n");
+    }
+
+    cudaFree(d_in);
+    cudaFree(d_out);
+
+    return 0;
+
+
+}
+```
+上面代码中`square<<<1, ARRAY_SIZE>>>(d_out, d_in);`是启动了`ARRAY_SIZE`个线程来执行核函数。
+
+## 配置启动核函数的参数
+上面代码中，启动核函数部分为`square<<<1, 64>>>(d_out, d_in)`，第一个参数`1`代表number of blocks，第二个参数表示threads per blocks。所以启动核函数时形式为：
+```language
+KERNEL<<<GRID OF BLOCKS, BLOCKS OF THREADSS>>>(...)
+```
+启动的两个参数其实都是三维的`dim3(x, y, z)`，因为`dim3(w, 1, 1) == dim3(w) == w`，所以可以简写。即`square<<<1, 64>>> == square<dim3(1,1,1), dim3(64, 1, 1)>>>`。
+
+启动核函数完整形式为
+```language
+KERNEL<<<dim3(bx, by, bz), dim3(tx, ty, tz), shmem, S>>>(...)
+```
+其中`shmem`表示shared memory per block in bytes，`stream`，即动态分配的共享内存的大小，单位是byte，不需要时为0或者不写;`S`类型为`cudaStream_t`，表示核函数在哪个流之中，默认为0。
+
+## MAP操作
+MAP操作是指有很多数据都要处理，核函数单独处理每一个数据
+
+## Problem Set
+这个作业要求是把一副彩色图片转换成灰度图片。彩色图片的一个像素对应RGB（alpha没有使用），转换过程就是把RGB三个值转换为一个值，具体公式为 output = .299f * R + .587f * G + .114f * B。做法很简单，就是GPU一个像素点对应一个GPU核函数。
+图像实际是一个矩阵，按照行优先来存储。因此启动核函数时的参数`dim3`只需要使用前2个维度即可。x对应列，y对应行；要求bx * tx >= 列数， by * ty >= 行数。
+实现就比较容易写出来了，`student_func.cu`如下
+```language
+#include "utils.h"
+
+__global__
+void rgba_to_greyscale(const uchar4* const rgbaImage,
+                       unsigned char* const greyImage,
+                       int numRows, int numCols)
+{
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+  if(col >= numCols || row >= numRows){ //确保不越界
+        return;
+  }
+  
+  int offset = row * numCols + col; //行优先存储
+  uchar4 rgba_pixel = rgbaImage[offset];
+  float greyness = 0.299f * rgba_pixel.x + 0.587f * rgba_pixel.y + 0.114f * rgba_pixel.z;
+  greyImage[offset] = static_cast<unsigned char>(greyness);
+}
+
+void your_rgba_to_greyscale(const uchar4 * const h_rgbaImage, uchar4 * const d_rgbaImage,
+                            unsigned char* const d_greyImage, size_t numRows, size_t numCols)
+{
+  const dim3 blockSize(32, 32, 1);
+  const dim3 gridSize( 1 + numCols / blockSize.x, 1 + numRows / blockSize.y, 1); 
+  rgba_to_greyscale<<<gridSize, blockSize>>>(d_rgbaImage, d_greyImage, numRows, numCols);
+  
+  cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+}
+```
 
 
 
