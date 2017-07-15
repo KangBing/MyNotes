@@ -498,4 +498,49 @@ public:
 ```
 上面代码中，要么`send_data()`初始化连接，要么`receive_data()·初始化连接。需要注意的是`std::once_flag`既不能copied，又不能moved。
 
+多线程初始化局部`static`变量时，在C++11之前不是线程安全的，有了C++11之后，是线程安全的：
+```
+class my_class;
+my_class& get_my_class_instance()
+{
+	static my_class instance;
+    return instance;
+}
+```
 
+#### 3.3.2 保护很少更新的数据结构
+有些场景中，数据更新很少，大部分操作都是读取数据。例如DNS缓存，很少会去更新。这样的场景，在使用数据（读/写）是都加锁代价过大，因为大部分操作都是读数据，并不需要加锁。这是需要的是`reader-writer`互斥量：写线程独占数据，读线程可以并发访问数据。
+C++标准库没有提供这样的互斥量。可以使用boost库中的`boost::shared_mutex`，在写线程中使用`std::lock_guard<boost::shared_mutex>`或`std::unique_lock<boost::shared_mutex>`，在读线程中使用`boost::shared_lock<boost::shared_mutex>`。线程如果想要独占`boost::shared_lock`就会阻塞直到其他线程释放了`boost::shared_lock`。
+```
+#include <map>
+#include <string>
+#include <mutex>
+#include <boost/thread/shared_mutex.hpp>
+
+class dns_entry;
+
+class dns_cache
+{
+	std::map<std::string, dns_entry> entries;
+    mutable boost::shared_mutex entry_mutex;
+public:
+	dns_entry find_entry(std::string const& domain) const
+    {
+    	boost::shared_lock<boost::shared_mutex> lk(entry_mutex);
+        std::map<std::string, dns_entry>::const_iterator const it = entries.find(domain);
+        return (it == entries.end())? dns_entry: it->second;
+    }
+    void update_or_add_entry(std::string const& domain, dns_entry const& dns_details)
+    {
+    	std::lock_guard<boost::shared_mutex> lk(entry_mutex);
+        entries[domain] = dns_detail;
+    }
+};
+```
+
+#### 3.3.3 递归锁
+使用`std::mutex`时，如果一个线程已经给它加锁，再次加锁时会导致未定义行为。但是在一些场景用，需要一个线程给互斥量多次加锁。C++标准委提供了这样的锁`std::recursive_mutex`。一个线程可以多次给`std::recursive_mutex`加锁，但要确保加锁和解锁次数相同，可以使用RAII来确保。
+大多时候，如果你需要使用递归锁，你要认真思考你的代码结果，尽量避免使用它。例如一个类的成员函数都加锁，一个成员函数调用另一个成员函数，这种场景可以封装为一个函数，在一个函数中调用这两个成员函数。
+
+### 3.4 总结
+这一章讲解了数据竞争，使用互斥量保护数据，死锁以及解决方法，变量初始化，保护读多写少的数据，递归锁。
