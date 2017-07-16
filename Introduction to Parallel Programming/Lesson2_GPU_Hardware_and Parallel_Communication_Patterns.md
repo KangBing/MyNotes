@@ -56,3 +56,48 @@ structures of arrays(SOA)
 ````
 f|f|f|f|f.........|i|i|i|i|i|........
 ````
+
+##  一个例子
+```
+float out[], in[];
+int i = threadIdx.x;
+int j = threadIdx.y;
+
+const float pi = 3.14.15;
+
+out[i] = pi * in[i]; // map操作
+
+out[i + j * 128] = in[j + i * 128]; // transpose
+
+if(i % 2){
+	out[i-1] += pi * in[i]; out[i+1] = pi * in[i]; // scatter
+    
+    out[i]  = (in[i] + in[i - 1]  + in[i+1]) * pi / 3.0f; // gather，也看是看做stencil
+}
+```
+
+## Parallel Communication Patterns
+Map：one - to - one
+Transpose: ont - to - one
+Gather: many - to - one
+Scatter：one - to - many
+Stencil:several - to - one
+
+Reduce: all - to - one
+scan / fort: all - to - all
+
+## Programmer View of the GPU
+GPU中kernel是指C/C++中的核函数。
+GPU中线程执行核函数。即使执行相同函数，不同线程执行路径可能不同，因为内部有if、for等控制语句。
+thread blocks:只是一组线程，这组线程共同协作来解决计算任务（子任务）。
+
+## Thread Blocks and GPU Hardware
+为什么把问题分成blocks？
+blocks什么时候运行？
+block以什么顺序运行？
+blocks怎么协作，有哪些限制？
+
+一堆线程可以称为流处理器（Streaming Multiprocessors, SMs)。不同GPU有不同数量的SMs。
+一个SM可以有很多简单的处理器，还有其他资源例如内存。GPU负责给SM分配block，分配的block在SM上运行。
+
+
