@@ -70,26 +70,81 @@
  不考虑构造函数、复制构造和赋值操作符、交换，还有三种类型操作：1、查询整个队列(`empty()`,`size()`)，2、查询队列元素(`front()`，`back()`)，3、修改队列（`push()`,`pop()，`emplace()`）。前面讨论过接口实现问题存在的条件竞争，因此要把`front()`和`pop()`设计到一个接口中，`top()`和`pop()`一样。
  使用线程传递数据，接收数据线程一般等待数据到达，实现了连个等待接口`try_pop()`和`wait_and_pop()`。
  ```
- #include <memory>
- 
- template <typename T>
- class threadsafe_queue
- {
- 	threadsafe_queue();
-    threadsafe_queue(const threadsafe_queue&);
+#include <memory>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+
+template <typename T>
+class threadsafe_queue
+{
+private:
+	std::mutex mut;
+    std::queue<T> data_queue;
+    std::condition_variable data_cond;
+    
+public:
+ 	threadsafe_queue()
+    {}
+    threadsafe_queue(const threadsafe_queue& other)
+    {
+    	std::lock_guard<std::mutex> lk(other.mut);
+        data_queue = other.queue;
+    }
     threadsafe_queue& operator=(const threadsafe_queue&) = delete;
     
-    void push(T new_value);
+    void push(T new_value)
+	{
+    	std::lock_guard<std::mutex> lk(mut);
+        data_queue.push(new_value);
+        data_cond.notify_one();
+    }
+     void wait_and_pop(T& value)
+     {
+     	std::unique_lock<std::mutex> lk(mut);
+        data_cond.wait(lk, [this]{return !data_queue.empty();});
+        value = data_queue.front();
+        data_queue.pop();
+     }
+     
+     std::shared_ptr<T> wait_and_pop()
+     {
+     	std::unique_lock<std::mutex> lk(mut);
+        data_cond.wait(lk, [this]{return !data_queue.empty();});
+        std::shared_ptr<T> res(std::make_shared<T>(data_queue.front()));
+        data_queue.pop();
+        return res;
+     }
     
-    bool try_pop(T& value);
-    std::shared_ptr<T> try_pop();
+    bool try_pop(T& value)
+    {
+    	std::lock_guard<std::mutex> lk(mut);
+        if(data_queue.empty())
+        	return false;
+         value = data_queue.front();
+         data_queue.pop();
+         return true;
+    }
+    std::shared_ptr<T> try_pop()
+    {
+    	std::lock_guard<std::mutex> lk(mut);
+        if(data_queue.empty())
+        	return std::shared_ptr<T>();
+        std::shared_ptr<T> res(std::make_shared<T>(data_queue.front()));
+        data_queue.pop();
+        return res;
+    }
     
-    void wait_and_pop(T& value);
-    std::shared_ptr<T> wait_and_pop();
-    
-    bool empty() const;
+
+    bool empty() const
+    {
+    	std::lock_guard<std::mutex> lk(mut);
+        return data_queue.empty();
+    }
  };
  ```
+ 
+ ### 4.2 使用future等待one-off事件
  
  
  
