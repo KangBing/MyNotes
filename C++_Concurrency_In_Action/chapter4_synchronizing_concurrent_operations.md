@@ -69,7 +69,7 @@
  设计一个通用队列，首先应该思考要有哪些操作，具体可以参考`std::queue`。
  不考虑构造函数、复制构造和赋值操作符、交换，还有三种类型操作：1、查询整个队列(`empty()`,`size()`)，2、查询队列元素(`front()`，`back()`)，3、修改队列（`push()`,`pop()，`emplace()`）。前面讨论过接口实现问题存在的条件竞争，因此要把`front()`和`pop()`设计到一个接口中，`top()`和`pop()`一样。
  使用线程传递数据，接收数据线程一般等待数据到达，实现了连个等待接口`try_pop()`和`wait_and_pop()`。
- ```
+```
 #include <memory>
 #include <queue>
 #include <mutex>
@@ -141,12 +141,14 @@ public:
     	std::lock_guard<std::mutex> lk(mut);
         return data_queue.empty();
     }
- };
- ```
+};
+```
  
- ### 4.2 使用future等待one-off事件
- 
- 
+### 4.2 使用future等待one-off事件
+ 有些场景，线程需要等待只发生一次的事件。C++标准库为这样的场景设计了`future`。·future`可以表示一次性事件，线程如果等待一次性事件，可以间隔一段时间查看`future`是否准备好，其他时间线程可以做其他事情。`future`可以关联数据，如果事件已经到达，那么`future`变为*ready*，之后`future`不能再重置。
+C++标准库有两种类型的`future`，都在头文件`<future>`:*unique futures*(`std::future<>`)和*shared futures*(`std::shared_future<>`)；这样的命名和`std::unique_ptr`、`std::shared_ptr`类似。一个`std::future<>`实例只能是一个事件，而多个`std::shared_future<>`变量可能指同一个事件。使用模板就是为了关联数据。·future`是用来在线程之间同步数据的，但是它们没有同步手段，可以使用互斥量或其他方法同步。多个线程可以同时access它们自己拷贝的`std::shared_future<>`实例，而不提供数据同步方法，后面4.2.5可以看到。
+
+#### 4.2.1 后台任务返回数值
  
  
  
