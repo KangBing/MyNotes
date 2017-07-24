@@ -149,12 +149,7 @@ public:
 C++标准库有两种类型的`future`，都在头文件`<future>`:*unique futures*(`std::future<>`)和*shared futures*(`std::shared_future<>`)；这样的命名和`std::unique_ptr`、`std::shared_ptr`类似。一个`std::future<>`实例只能是一个事件，而多个`std::shared_future<>`变量可能指同一个事件。使用模板就是为了关联数据。·future`是用来在线程之间同步数据的，但是它们没有同步手段，可以使用互斥量或其他方法同步。多个线程可以同时access它们自己拷贝的`std::shared_future<>`实例，而不提供数据同步方法，后面4.2.5可以看到。
 
 #### 4.2.1 后台任务返回数值
- 
- 
- 
- 
- 
- 
+假设有一个长期运行的后台计算任务，要取得计算的结果，`std::thread`不能直接返回结果。这时候可以用`std::async`来启动*asynchronous task*；这是不用等待线程计算结果，`std::async`返回`std::future`存储结果。取结果线程不必等待计算线程，`std::async`返回的`std::future`会
  
  
  
