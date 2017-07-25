@@ -164,9 +164,51 @@ int main()
     return 0;
 }
 ```
- 
- 
- 
+和`std::thread`一样，`std::async`可以传入额外参数，例如启动类的成员函数要传入实例指针，还可以传入普通参数；`std::async`只能移动，不能拷贝。
+```
+#include <string>
+#include <future>
+struct X
+{
+	void foo(int, std::string const&);
+    std::string bar(std::string const&);
+};
+X x;
+auto f1 = std::async(&X::foo, &x, 42, "hello");
+auto f2 = std::async(&X::bar, x, "goodbye");
+struct Y
+{
+	double operator() (double);
+};
+Y y;
+auto f3 = std::async(Y(), 3.141);
+auto f4 = std::async(std::ref(y), 2.718); // 这里传入实例引用，传入指针也可以
+X baz(X&);
+std::async(baz, std::ref(x));
+class move_only
+{
+public:
+	move_only();
+    move_only(move_only&&);
+    move_only(move_only const&) = delete;
+    move_only& operator = (move_only&&);
+    move_only& operator = (move_only const&) = delete;
+    
+    void operator() ();
+};
+auto f5 = std::async(move_only());
+```
+`std::async`是否启动新线程，或等到调用同步时才执行；这取决于具体实现。可以增加一个参数来控制，`std::launch`或`std::lauch::deferred`，表面任务被延迟到调用`wait()`或`get()`才执行。`std::launch::async`指示任务在独立线程执行，`std::launch::deferred|std::launch`::async`指示根据实现决定
+```
+auto f6 = std::async(std::lauch::async, Y(), 1.2); //在新线程执行
+auto f7 = std::async(std::launch::deferred, baz, std::ref(x)); //在调用wait()或get()时执行
+auto f8 = std::async(std::launch::deferred|std::launch`::async, baz, std::ref(x)); //根据实现决定
+auto f9 = std::async(baz, std::ref(x)); //根据实现决定
+f7.wait(); //调用f7
+```
+第八章会看到使用`std::async()`来分解算法并发执行。
+
+#### 4.2.2 把future和任务关联起来
  
  
  
