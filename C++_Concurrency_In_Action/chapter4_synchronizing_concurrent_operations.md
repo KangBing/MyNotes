@@ -212,4 +212,54 @@ f7.wait(); //调用f7
 `std::package_task<>`可以把`future`和函数/可调用对象结合起来，当调用`std::packaged_task`对象时就会调用关联的函数/可调用对象，使`future`变量变为*ready*,返回的时间存储在关联的数据结构中。
 `std::packaged_task<>`模板参数是函数类型，例如`void()`表示没有参数和返回值,`int(std::string&, double*)`表示传入non-const std::string引用和double类型的指针，返回int类型。当创建`std::packaged_task<>`类型时，要传入函数或可调用对象，用来表示传入参数类型和返回类型。注意，这些参数并不需要完全匹配，编译器可能会做隐士类型转换。
 
- 
+`std::package_task<>`可以进行偏特化，通过成员函数`get_future()`来获取`std::future<>`，`std::future<>`关联了任务函数类型，下面是偏特化一个例子
+```
+template<>
+class packaged_task<std::string(std::vector<char>*, int)>
+{
+public:
+	template<typename Callable>
+    explict packaged_task(Callable& f);
+    std::future<std::string> get_future();
+    void operator()(std::vector<char>*, int);
+}
+```
+这样封装后，`std::package_task`就是一个可以调用对象，方便使用。例如传递到其他线程，当做参数在函数间传递，或者直接调用。当`std::package_task`封装成函数对象，传给它的参数就是异步任务的参数，结果存储在·std::future`中。
+
+在一些GUI框架中，更新GUI要通过特定线程才行。所以要更新GUI时，可以把任务传递给更新线程即可。
+```
+std::mutex m;
+std:;dequeue<std::package_task<void>> tasks;
+
+bool gui_shutdown_message_received();
+void get_and_process_gui_message();
+
+void gui_thread()
+{
+	while(!gui_shutdown_message_received())
+    {
+    	get_and_process_gui_message();
+        std:package_task<void> task;
+        {
+        	std::lock_guard<std::mutex> lk(m);
+            if(tasks.empty())
+            	continue;
+                task = std::move(tasks.front());
+                tasks.pop_front();
+        }
+        task();
+    }
+}
+
+std::thread gui_bg_thread(gur_thread);
+
+template<typename Func>
+std::future<void> post_task_for_gui_thread(Func f)
+{
+	std::packaged_task<void()> task(f);
+    std::future<void> res = task.get_future();
+    std::lock_guard<std::mutex> lk(m);
+    tasks.push_back(std::move(task));
+    return res;
+}
+```
