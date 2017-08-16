@@ -263,3 +263,7 @@ std::future<void> post_task_for_gui_thread(Func f)
     return res;
 }
 ```
+逻辑比较简单：跟新gui封装成一个函数，之后通过`std::package_task`封装成一个task，放到任务队列（生产者），gui线程（消费者）从队列取任务来执行。
+
+#### 4.2.3 Making (std::)promises
+如果任务比较复杂，不能使用上面的task来封装成一个函数或调用对象，那么可以使用`std::promises`。
