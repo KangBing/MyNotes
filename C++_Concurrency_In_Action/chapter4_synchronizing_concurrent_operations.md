@@ -266,4 +266,28 @@ std::future<void> post_task_for_gui_thread(Func f)
 逻辑比较简单：跟新gui封装成一个函数，之后通过`std::package_task`封装成一个task，放到任务队列（生产者），gui线程（消费者）从队列取任务来执行。
 
 #### 4.2.3 Making (std::)promises
-如果任务比较复杂，不能使用上面的task来封装成一个函数或调用对象，那么可以使用`std::promises`。
+如果任务比较复杂，不能使用上面的task来封装成一个函数或调用对象，那么可以使用`std::promises`。例如，当有网络连接时，如果一个连接占用一个线程，连接过多会消耗太多系统资源；一种做法是用一个（或几个线程）来处理网络连接。数据的收发都是随机的，IO线程常常在等待收/发。
+`std::promise<T>`和`std::future<T>`可以提供一种方法，使用数据线程阻塞等待`std::future<T>`变为`ready`，`std::promise`可以使得数据`T`变为`ready`。通过`std::promise`的成员函数`get_future()`得到`std::future`变量，在`std::future`上调用`get_future()`阻塞等待；`std::promise`调用成员函数`set_value()`使得`std::future`变量变为`ready`。
+```
+#include <future>
+void process_connection(connection_set& connections)
+{
+	while(!done(connections))
+    {
+    	for(connection_iterator connection = connections.begin(), end = connections.end(); connection != end(); ++connection)
+        {
+        	if(connection->has_incoming_data())
+            {
+            	data_packet data = connection->incoming();
+                std::promise<payload_type>& p = connection->get_promise(data.id);
+                p.set_value(data.payload);
+            }
+            if(connection->has_outgoing_data())
+            {
+            	outgoing_packet data = connection->top_of_outgoing_queue();
+                connection->send(data.payload);
+                data.promise.set_value(true);
+            }
+        }
+    }
+}
