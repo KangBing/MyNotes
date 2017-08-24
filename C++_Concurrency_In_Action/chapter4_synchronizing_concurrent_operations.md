@@ -267,27 +267,30 @@ std::future<void> post_task_for_gui_thread(Func f)
 
 #### 4.2.3 Making (std::)promises
 如果任务比较复杂，不能使用上面的task来封装成一个函数或调用对象，那么可以使用`std::promises`。例如，当有网络连接时，如果一个连接占用一个线程，连接过多会消耗太多系统资源；一种做法是用一个（或几个线程）来处理网络连接。数据的收发都是随机的，IO线程常常在等待收/发。
-`std::promise<T>`和`std::future<T>`可以提供一种方法，使用数据线程阻塞等待`std::future<T>`变为`ready`，`std::promise`可以使得数据`T`变为`ready`。通过`std::promise`的成员函数`get_future()`得到`std::future`变量，在`std::future`上调用`get_future()`阻塞等待；`std::promise`调用成员函数`set_value()`使得`std::future`变量变为`ready`。
+`std::promise<T>`和`std::future<T>`可以提供一种方法，使用数据线程阻塞等待`std::future<T>`变为`ready`，`std::promise`可以使得数据`T`变为`ready`。通过`std::promise`的成员函数`get_future()`得到`std::future`变量，在`std::future`上调用`get_future()`阻塞等待；`std::promise`调用成员函数`set_value()`使得`std::future`变量变为`ready`。下面是IO线程处理网络IO代码。
 ```
 #include <future>
 void process_connection(connection_set& connections)
 {
 	while(!done(connections))
     {
-    	for(connection_iterator connection = connections.begin(), end = connections.end(); connection != end(); ++connection)
+    	for(connection_iterator connection = connections.begin(), end = connections.end(); connection != end(); ++connection)//遍历connections set中的每个connection
         {
-        	if(connection->has_incoming_data())
+        	if(connection->has_incoming_data())//有数据可以接收
             {
             	data_packet data = connection->incoming();
-                std::promise<payload_type>& p = connection->get_promise(data.id);
-                p.set_value(data.payload);
+                std::promise<payload_type>& p = connection->get_promise(data.id);//id和std::promise关联
+                p.set_value(data.payload);//之后调用std::future<data.payload>.get_future()可以获取数据data.payload
             }
-            if(connection->has_outgoing_data())
+            if(connection->has_outgoing_data())//有数据可以发送
             {
-            	outgoing_packet data = connection->top_of_outgoing_queue();
+            	outgoing_packet data = connection->top_of_outgoing_queue();//发送队列取数据
                 connection->send(data.payload);
-                data.promise.set_value(true);
+                data.promise.set_value(true);//调用的std::future<bool>.get_future()返回true
             }
         }
     }
 }
+```
+上面这个例子，数据收发都在IO线程。收到数据后，通过id关联的`std::promise`设置数据；发送数据时，从一个connection的发送队列取数据->发送，之后设置发送成功（std::promise.set_value(true）。
+上面并没有处理异常（例如收发失败、网络断开等），主要是展示`std::promise`和`std::future`结合的用法。
