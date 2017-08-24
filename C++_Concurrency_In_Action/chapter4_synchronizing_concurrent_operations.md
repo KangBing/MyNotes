@@ -331,3 +331,26 @@ some_promise.set_exception(std::copy_exception(std::logic_error("foo")));
 还有一种方法在future变量中存储异常：既没有调用set函数，也没有调用packaged task，这时销毁future变量关联的`std::promise`或`std::packaged_task`。这时如果future没有*ready*，`std::promise`和`std::packaged_task`会存储`std::future_error`异常，错误代码为`std::future_errc::broken_promise`。创建promise来提供值或者异常，得到future；在没有提供值或者异常时销毁promise，如果编译器没有存储任何东西，等待线程会一直等待下去。
 
 #### 4.2.5 在多个线程上等待
+`std::future`可以在不同线程之间同步数据。如果多个线程在没有同步的情况下同时在一个`std::future`实例上等待数据，会有data rece；这是因为`std::future`的独占异步结果模型控制权和`get()`函数one-shot特性（只有一个线程可以得到数据）。
+如果多个线程要等待同一个事件，可以使用`std::shared_future`。`std::future`是*moveable*，`std::shared_future`是*copyable*。因此多个实例可以关联同一个状态。在使用时，不是多个线程使用同一个`std::shared_future`变量，而是每个线程都有`std::shared_future`变量的拷贝。
+`std::future`来构造`std::shared_future`时，要通过`move`剥夺其控制权
+```
+std::promise<int> p;
+std::future<int> f(p.get_future());
+assert(f.valid());
+std::shared_future<int> sf(std::move(f));
+assert(!f.valid());
+assert(sf.valid());
+```
+`std::shared_future`构造函数可以为右值执行隐式转换，例如
+```
+std::promise<std::string> p;
+std::shared_future<std::string> sf(p.get_future());
+```
+`std::future`还有`share()`成员函数直接转移控制权
+std::promise< std::map< SomeIndexType, SomeDataType, SomeComparator,SomeAllocator>::iterator> p;
+auto sf=p.get_future().share();
+```
+得到的`sf`类型为`std::shared_future< std::map< SomeIndexType, SomeDataType, SomeComparator, SomeAllocator>::iterator>`。
+
+### 4.3 等待有限时间
