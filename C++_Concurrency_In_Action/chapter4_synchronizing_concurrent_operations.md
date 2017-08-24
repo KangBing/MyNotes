@@ -294,3 +294,40 @@ void process_connection(connection_set& connections)
 ```
 上面这个例子，数据收发都在IO线程。收到数据后，通过id关联的`std::promise`设置数据；发送数据时，从一个connection的发送队列取数据->发送，之后设置发送成功（std::promise.set_value(true）。
 上面并没有处理异常（例如收发失败、网络断开等），主要是展示`std::promise`和`std::future`结合的用法。
+
+#### 4.2.4 为future保存异常
+`std::future`关联的函数可能抛出异常，例如：
+```
+double square_root(double x)
+{
+	if(x < 0)
+    {
+    	throw std::out_of_range("x < 0");
+    }
+    return sqrt(x);
+}
+std::future<double> f = std::async(square_root, -1);
+double y = f.get();//此处会抛出异常
+```
+异常是在执行函数`square_root(double x)`函数中抛出的，但是在调用`future.get()`的线程中可以得到同样的异常（标准没有详细解释，这个异常是原始异常，或时原始异常的拷贝，不同编译器有不同实现）。同样适用于`std::packaged_task`。
+在`std::promise`中提供了成员函数`set_exception()`来设置异常，可以在try/catch的catch模块设置异常:
+```
+extern std::promise<double> some_promise;
+
+try
+{
+	some_promise.set_value(caculate_value());
+}
+catch(...)
+{
+	some_promise.set_exception(std::current_excepiton());
+}
+```
+上面是抛出了异常；还可以选择使用`std::copy_exception()`存储新的异常，而不是抛出。
+```
+some_promise.set_exception(std::copy_exception(std::logic_error("foo")));
+```
+这样使用代码更加简洁，且应该优先这样使用；因为编译器更有可能对此做出优化。
+还有一种方法在future变量中存储异常：既没有调用set函数，也没有调用packaged task，这时销毁future变量关联的`std::promise`或`std::packaged_task`。这时如果future没有*ready*，`std::promise`和`std::packaged_task`会存储`std::future_error`异常，错误代码为`std::future_errc::broken_promise`。创建promise来提供值或者异常，得到future；在没有提供值或者异常时销毁promise，如果编译器没有存储任何东西，等待线程会一直等待下去。
+
+#### 4.2.5 在多个线程上等待
