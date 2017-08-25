@@ -348,9 +348,19 @@ std::promise<std::string> p;
 std::shared_future<std::string> sf(p.get_future());
 ```
 `std::future`还有`share()`成员函数直接转移控制权
+```
 std::promise< std::map< SomeIndexType, SomeDataType, SomeComparator,SomeAllocator>::iterator> p;
 auto sf=p.get_future().share();
 ```
 得到的`sf`类型为`std::shared_future< std::map< SomeIndexType, SomeDataType, SomeComparator, SomeAllocator>::iterator>`。
 
 ### 4.3 等待有限时间
+线程在阻塞操作可能永远等待下去。在一些场景中，要求只是等待一段时间。总的来说有两种类型：1、等待一段时间，时间段固定；2、等待到某一个时间点。对于第一种，常用的函数后缀为`_for`，第二种为`_until`。
+例如，`std::condition_variable`有两个成员函数`wait_for()`和`wait_until()`。
+
+#### 4.3.1 时钟Clocks
+Clock是时间的源信息。Clock是一个类，提供四种信息
+* 当前时间*now*
+* 从clock获取的时间值的类型
+* 时钟的tick周期
+* 时钟的tick周日是否固定，固定就是稳定的clock
