@@ -364,3 +364,10 @@ Clock是时间的源信息。Clock是一个类，提供四种信息
 * 从clock获取的时间值的类型
 * 时钟的tick周期
 * 时钟的tick周日是否固定，固定就是稳定的clock
+
+当前时间可以调用静态函数`now()`获取，例如`std::chrono::system_clock::now()`返回系统时钟的当前时间。时钟的时间类型由`typedef`定义的`time_point`定义，例如`some_clock::now()`返回类型为`some_clock::time_point`。
+时钟周期定义为分数，例如几分之一秒；1秒中25个周期，为`std::ratio<1, 25>`，2.5秒为一个周期定义为`std::radio<5, 2>`。如果时钟周期只能在运行时获取，或者是变化和，可以使用平均周期，或最小周期，或其他值。
+如果时钟周期固定（不论是否匹配period）且不能改变，那么就说这个时钟是*steady*的。静态函数`is_steady`将会返回`true`，否则返回`false`。`std::chrono::system_cloce`不是*steady*，因为它可以调整，这会造成调用`now()`时得到的时间early。*steady*时钟很重要，`std::chrono::steady_clock`是*steady*的。`std::chrono::system_clock`表示系统的real time，可以转换为`time_t`类型；`std::chrono::high_resolution_clock`时钟周期尽可能小（分辨率高）。它们都定义在`<chrono>`中。
+
+
+#### 4.3.2 Durations
