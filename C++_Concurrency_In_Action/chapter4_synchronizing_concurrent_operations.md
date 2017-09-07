@@ -370,4 +370,22 @@ Clock是时间的源信息。Clock是一个类，提供四种信息
 如果时钟周期固定（不论是否匹配period）且不能改变，那么就说这个时钟是*steady*的。静态函数`is_steady`将会返回`true`，否则返回`false`。`std::chrono::system_cloce`不是*steady*，因为它可以调整，这会造成调用`now()`时得到的时间early。*steady*时钟很重要，`std::chrono::steady_clock`是*steady*的。`std::chrono::system_clock`表示系统的real time，可以转换为`time_t`类型；`std::chrono::high_resolution_clock`时钟周期尽可能小（分辨率高）。它们都定义在`<chrono>`中。
 
 
-#### 4.3.2 Durations
+#### 4.3.2 Durations（时间段）
+时间段用`std::chrono::duration<>`模板类表示，第一个参数是表示类型（例如`int, long, double`），第二个参数是分数，表示时间段是多少秒。例如`std::chrono::duration<shot, std::ratio<60, 1>>`表示一分钟，因为60秒是1分钟，再例如千分之一秒`std::chrono::duration<double, std::ratio<1, 1000>>`。
+C++标准库在`std::chrono`用typedef定义两个很多类型的duration:nanoseconds, microseconds, milliseconds, seconds, minutes, hours；用适当的单位可以表示500年。还可以使用typedef定义的SIratios，`std::atto(10^-18)`到`std::exa(10^18)`(如果平台支持128为整数类型)。
+时间段类型之间可以进行隐式类型转换，且没有数值截断（小时转换到秒可以，反之不行）。可以用`std::chrono::duration_cast<>`进行显示类型转换：
+```
+std::chrono::milliseconds ms(54802);
+std::chrono::seconds = std::chrono::duration_cast<std::chrono::seconds>(ms);
+```
+结果会进行截断，而不是向上取整，这里结果是54。
+时间段支持数值运算，可以进行跨类型的加减，乘除只是支持常数。例如`5 * seconds(1)`等于`seconds(5)`，也等于`minutes（1） - seconds(55)`。可以通过`count()`函数获取数值，例如`std::chrono::milliseconds(1234).count()`为1234。
+基于时间段的等待，可以使用`std::chrono::duration<>`实例，例如等待future变量35milliseconds
+```
+std::future<int> f = std::async(some_task);
+if(f.wait_for(std::chrono::millisconds(35)) == std::future_status::ready)
+	do_something_with(f.get());
+```
+等待函数返回状态。这里等待future，因此会返回`std::future_status::timeout`或`std::future_status::ready`或`std::future_status::deferred`。基于时间段的等待函数使用的是steady时钟，35milliseconds意味着实际耗时，即时调整了时钟。当然，系统的调度和时钟精度，以及调用函数和返回等因素，常常造成等待时间多于35ms。
+
+#### 4.3.3 Time points时间点
