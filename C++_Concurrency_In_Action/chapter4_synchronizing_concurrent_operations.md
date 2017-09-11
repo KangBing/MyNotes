@@ -389,3 +389,39 @@ if(f.wait_for(std::chrono::millisconds(35)) == std::future_status::ready)
 等待函数返回状态。这里等待future，因此会返回`std::future_status::timeout`或`std::future_status::ready`或`std::future_status::deferred`。基于时间段的等待函数使用的是steady时钟，35milliseconds意味着实际耗时，即时调整了时钟。当然，系统的调度和时钟精度，以及调用函数和返回等因素，常常造成等待时间多于35ms。
 
 #### 4.3.3 Time points时间点
+时钟的时间点通过模板`std::chrono::time_point<>`指定，模板第一个参数是clock，第二个参数是测量精度（`std::chrono::duration<>`实例）。时间点的数值是距离epoch时间（不同精度数值不同）。时钟可以有独立的epoch，或共享一个epoch。如果时钟共享一个epoch，那么typedef定义的`time_point`可能会有关联。可以通过`time_since_epoch()`来获取时间点，这个函数返回到epoch的时延值。
+通过`std::chrono::time_point<std::chrono::system_clock, std::chrono::minutes>`返回到epochs时间的值，单位为分钟。
+时间点类型`std:;chrono::time_point<>`可以和时间段进行加减运算，例如`std::chrono::high_resolution_clock::now() + std::chrono::nanoseconds(500)`将会得到500nanoseconds后的时间点。
+可以通过两个时间点的减法得到时间段，例如获取代码执行时间
+```
+auto start = std::chrono::high_resolution_clock::now();
+do_something();
+auto stop = chrono::high_resulotion_clock::now();
+std::cout<<"do_something() took "<<std::chrono::duration<double, std::chrono::seconds>(stop - start).cout()<<" seconds"<<std::endl;
+```
+`std::chrono::time_point<>`的时钟参数不仅仅指定epoch时间。例如wait函数等待参数为绝对时间时，时钟参数用来衡量时间；如果时钟周期变了，等待的时间长短会变。
+等待时间点函数`_until`使用时间点方式很多，常用的一种是使用时钟偏移。系统的epoch时间time_t类型可以通过`std::chrono::system_clock::to_time_point()`获取。如果最多等待条件变量500milliseconds：
+```
+#include <condition_variable>
+#inlcude <mutex>
+#inlcude <chrono>
+std::contidion_variable cv;
+bool done;
+std::mutex m;
+bool wait_loop()
+{
+	auto const timeout = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    std::unique_lock<std::mutex> lk(m);
+    while(!done)
+    {
+    	if(cv.wait_until(lk, timeout) == std::cv_status::timeout)
+        {
+        	break;
+        }
+        return done;
+    }
+}
+```
+推荐这种方式使用条件变量等待有限时间。
+
+#### 4.3.4 接收超时的函数
