@@ -425,3 +425,17 @@ bool wait_loop()
 推荐这种方式使用条件变量等待有限时间。
 
 #### 4.3.4 接收超时的函数
+使用超时最简单的方法是给处理线程加上一个延时，当它没有处理任务时就不会占用处理器。例如在4.1节中使用的`std::this_thread::sleep_for()`和`std::this_thread::sleep_until()`，工作机制和闹钟类似：线程会sleep一段时间或到某个时间点。
+sleep不是使用超时的唯一方式，还可以使用条件变量（condition variables）和future；如果锁支持超时，还可以在锁上使用，`std::mutex`和`std::recursive_mutex`不支持，但是`std::timed_mutex`和`std::recursive_timed_mutex`支持，方法为`try_lock_for()`和`try_lock_until()`。下表展示了C++标准库支持的超时函数，参数列表中表名为`duration`的必须是`std::duration<>`的实例，`time_point`的必须为`std::time_point`的实例
+
+|Class/Namespace|Functions|Return values|
+|:------------:|:--------:|:-----------:|
+|std::this_thread namespace|sleep_for(duration) sleep_until(time_point)|N/A|
+|std::condition_variable or std::condition_variable_any| wait_for(lock, duration) wait_until(lock, time_point)| std::cv_status::timeout or std::cv_status::no_timeout|
+||wait_for(lock,duration,predicate) wait_until(lock,time_point,predicate)|bool-the return value of predicate when awakened|
+|std::time_mutex or std::recursive_timed_mutex|try_lock_for(duration) try_lock_until(time_point)|bool-true if lock was acquired, false otherwise|
+|std::unique_lock<TimedLockable|unique_lock(lockable, duration) unique_lock(lockable, time_point)|bool-true if the lock was acquired, false otherwise|
+|std::future<ValueType> or std::shared_future<ValueType>|wait_for(duration) wait_until(time_point)|std::fature_status::timeout if wait timed out, std::future_status::ready if the future is ready, or std::future_status::defered is the future holds a deferred function the han't yet started|
+
+
+### 4.4 使用同步操作简化代码
