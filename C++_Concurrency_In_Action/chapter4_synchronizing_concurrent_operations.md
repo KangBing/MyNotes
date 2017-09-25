@@ -447,3 +447,62 @@ sleep不是使用超时的唯一方式，还可以使用条件变量（condition
 C++是多重编程范式，可以使用FP风格封装函数；在C++11中更加简单，因此C++11包含了lambda表达式、`std::bind`、自动类型推导。Futures使得并发操作中的FP-stype编程更加清晰；future变量可以在线程间传递，一个线程的结果依赖另外一个线程的计算，而不需要共享数据。
 
 * FP-Style快速排序
+以快速排序为例来看一下FP-stype风格的编程。先看一下顺序实现快排
+```
+template<typename T>
+std::list<T> sequential_quick_sort(std::list<T> input)
+{
+	if(input.empty())
+    {
+    	return input;
+    }
+    std::list<T> result;
+    result.splice(result.begin(), input, input.begin()); // input 移动到result中
+    T const& pivot = *result.begin();// 分割数
+    
+    auto divide_point = std::partition(input.begin(), input.end(), [&](T const& t){return t < pivot;});// 一次快排
+    
+    std::list<T> lower_part;
+    lower_part.splice(low_part.end(), input, input.begin(), divide_point); // 小于pivot部分
+    
+    auto new_lower(
+    	sequential_quick_sort(std::move(lower_part)));
+    auto new_higher(
+    	sequential_quick_sort(std::move(input)));
+    result.splice(result.end(), new_lower);
+    result.splice(result.end(), new_higher);
+    
+    return result;
+}
+```
+接口是FP-stype风格的，但是内部实现却不是（如果是需要很多拷贝），里面用到了`std::list<T>.splice`来Transfers elements from one container to another，`std::move`避免拷贝链表。
+
+下来来实现FP-style的并行快排
+```
+template<typename T>
+std::list<T> parallel_quick_sort(std::list<T> input)
+{
+	if(input.empty())
+    {
+    	return input;
+    }
+    std::list<T> result;
+    result.splice(result.begin(), input, input.begin());
+    T const& pivot = *result.begin();
+    
+    auto divide_point = std::partition(input.begin(), input.end(), [&](T const& t){return t < pivot;});
+    
+    std::lower_part;
+    lower_part.splice(lower_part.begin(), input, input.begin(), divide_potin);
+    
+    std::future<list<T>> new_lower(
+    	std::async(&parallel_quick_sort<T>, std::move(lower_part)));// 并行快排new_lower
+    auto new_higher(
+    	parallel_quick_sort, std::move(input));// 当前线程快排new_higher
+    
+    retult.splice(result.end(), new_lower);
+    ersult.splice(result.end(), new_higher);
+    return result;
+}
+```
+lower part排序在新的线程。每一次递归，线程数会加倍，呈指数增长。如果运行库任务线性太多，会同步线程。这时会在调用`get()`成员函数时运行函数，而不是创建新的线程运行函数，这样还可避免线程间传递数据的开销。这符合`std::async`的实现；除非显示制定`std::launch::deferred`，或`std::launch::async`并行运行任务。
