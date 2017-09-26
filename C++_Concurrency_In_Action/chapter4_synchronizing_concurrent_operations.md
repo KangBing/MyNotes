@@ -505,4 +505,24 @@ std::list<T> parallel_quick_sort(std::list<T> input)
     return result;
 }
 ```
-lower part排序在新的线程。每一次递归，线程数会加倍，呈指数增长。如果运行库任务线性太多，会同步线程。这时会在调用`get()`成员函数时运行函数，而不是创建新的线程运行函数，这样还可避免线程间传递数据的开销。这符合`std::async`的实现；除非显示制定`std::launch::deferred`，或`std::launch::async`并行运行任务。
+lower part排序在新的线程。每一次递归，线程数会加倍，呈指数增长。如果运行库任务线性太多，会同步线程。这时会在调用`get()`成员函数时运行函数，而不是创建新的线程运行函数，这样还可避免线程间传递数据的开销。这符合`std::async`的实现；除非显示制定`std::launch::deferred`，或`std::launch::async`并行运行任务。尽管`std::async`提供了优化，但是对于排序最好还是使用库函数`std::partition`。
+可以使用`std::package_task`和`std::tread`来编写函数`spawn_task()`用新线程执行任务，从future得到结果
+```
+template<typename F, typename A>
+std::function<std::result_of<F(A&&)>::type> spawn_task(F&& f, A&& a)
+{
+	typedef std::result_of<F(A&&)>::type result_type;
+    std::package_task<result_type(A&&)> task(std::move(f)));
+    std::future<result_type> res(task.get_future());
+    std::thread t(std::move(task), std::move(a));
+    t.detach();
+    return res;
+}
+```
+这样封装任务并没有多大优势，可以考虑第九章介绍的线程池来提供性能。
+函数编程不是唯一避免共享变量数据的编程方式；另外一种是CSP(Communication Squeential Process)，线程完全分开，没有共享数据，通过通信channel来传递消息；这种方式北[Erlang](http://www.erlang.org)和[MPI(Message Passing Interface)](http://www.mpi-forum.org/)环境采用，用在C/C++的高性能开发中。
+
+#### 4.4.2 消息传递同步操作
+CSP的想法很简单：如果线程间没有共享数据，每个线程都可以看做是独立的，它一直对收到消息做出响应。这样每个线程相当于一个状态机：当它收到消息，它更新状态。编写这样的线程，就要实现一个有限状态机。
+C++共享进程地址空间，开发者要确保不用共享数据（消息队列除外）。假设要实现一个ATM实现取钱功能。
+
