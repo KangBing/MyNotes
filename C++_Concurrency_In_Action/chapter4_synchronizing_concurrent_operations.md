@@ -524,5 +524,88 @@ std::function<std::result_of<F(A&&)>::type> spawn_task(F&& f, A&& a)
 
 #### 4.4.2 消息传递同步操作
 CSP的想法很简单：如果线程间没有共享数据，每个线程都可以看做是独立的，它一直对收到消息做出响应。这样每个线程相当于一个状态机：当它收到消息，它更新状态。编写这样的线程，就要实现一个有限状态机。
-C++共享进程地址空间，开发者要确保不用共享数据（消息队列除外）。假设要实现一个ATM实现取钱功能。
+C++共享进程地址空间，开发者要确保不用共享数据（消息队列除外）。假设要实现一个ATM实现取钱功能；需要和取钱人交互、和相关银行交互以及控制取款机（读卡等）。
+可以用三个线程来控制：一个控制ATM机，一个处理ATM逻辑，一个和银行通信。这三个线程只是通过消息传递共享数据。
+可以通过状态机建模ATM逻辑。在每一个状态，线程等待消息，之后处理消息，变为另一个状态，依次循环。逻辑比较简单：先去读卡，等待数据密码，密码正确等待输入交易或取消，密码错误则结束。
+```
+struct card_insert
+{
+	std::string account;
+}
+class atm
+{
+	message::receiver incoming;
+    message::sender bank;
+    message::sender interface_hardware;
+    void(atm::*state)();
+    
+    std::string account;
+    std::string pin;
+    
+    void waiting_for_card()
+    {
+    	interface_hardward.send(display_enter_card());
+        incoming.wait()
+        	.handle<card_inserted>(
+            	[&](card_inserted const& msg)
+                {
+                	account = msg.account;
+                    pin = "";
+                    interface_hardware.send(display_enter_pin());
+                    state = &atm::getting_pin;
+                });
+    }
+    void getting_pin();
+public:
+	void run()
+    {
+    	state = &atm::waiting_for_card;
+        try
+        {
+        	for(;;)
+            {
+            	(this->*state)();
+            }
+        }
+        catch(message::close_queue const&)
+        {
+        
+        }
+    }
+};
 
+void atm::geting_pin()
+{
+	incoming.wait()
+    	.handle<digit_pressed>(
+        	[&](digit_pressed const& msg)
+            {
+            	unsigned const pin_length = 4;
+                pin += msg.digit;
+                if(pin.length() == pin_length
+                {
+                	bank.sned(verify_pin(account,pin,incoming));
+                    state = &atm::verifying_pin;
+                }
+            }
+            )
+        .handle<clear_last_pressed>(
+        	[&](clear_last_pressed const& msg)
+            {
+            	if(!pin.empty())
+                {
+                	pin.resize(pin.length() -1);
+                }
+            }
+            )
+        .handle<cancel_pressed>(
+        	[&](cancel_pressed const& msg)
+            {
+            	state=&atm::done_processing;
+            }
+            );
+}
+```
+
+### 4.5 总结
+在多线程并发环境中，要学会使用同步操作。这一章讲到的同步操作有条件变量、futures、promises、packageed tasks。还提高了FP风格编程，函数只依赖输入，不依赖外部数据；消息传递，消息异步传送到其他线程来处理。
